@@ -44,8 +44,26 @@ stages:
       pool:
         vmImage: 'ubuntu-latest'
       steps:
-
       # Initiate and plan terraform on prd; output artifact for review.
       - template: templates/terraformPlan.yml
         parameters:
           env: 'prd'
+
+    # Initiate and plan terraform on dev; output artifact for review.
+    - job: 'terraformInitDev'
+      displayName: 'Init & Plan (dev)'
+      # Only deploy if the previous stage completed, and the branch is not 'stg' or 'prd'.
+      condition: |
+        and
+        (
+        succeeded(),
+        ne(variables['Build.SourceBranchName'], 'stg'),
+        ne(variables['Build.SourceBranchName'], 'prd')
+        )
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      # Initiate and plan terraform on dev; output artifact for review.
+      - template: templates/terraformPlan.yml
+        parameters:
+          env: 'dev'
