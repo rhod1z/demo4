@@ -1,3 +1,5 @@
+# Terraform init & plan template.
+
 steps:
 
 # Install specific version of terraform.
@@ -16,7 +18,7 @@ steps:
 # Run terraform plan.
 - bash: terraform plan -out tfplan && terraform show tfplan > tfplan.txt
   displayName: Terraform Plan
-  workingDirectory: 'terraform/env/prd'
+  workingDirectory: 'terraform/env/${{ parameters.env }}'
   env:
     ARM_CLIENT_SECRET: $(KV-ARM-CLIENT-SECRET)
 
@@ -24,12 +26,12 @@ steps:
 - task: PublishPipelineArtifact@1
   displayName: Terraform Plan Report
   inputs:
-    targetPath: '$(Build.SourcesDirectory)/terraform/env/prd/tfplan.txt'
+    targetPath: '$(Build.SourcesDirectory)/terraform/env/${{ parameters.env }}/tfplan.txt'
     artifactName: 'tfplan.txt'
 
 # Publish tfplan to be used by 'terraform apply -input=false tfplan'.
 - task: PublishPipelineArtifact@1
   displayName: Terraform Report Output
   inputs:
-    targetPath: '$(Build.SourcesDirectory)/terraform/env/prd/tfplan'
+    targetPath: '$(Build.SourcesDirectory)/terraform/env/${{ parameters.env }}/tfplan'
     artifactName: 'tfplan'
