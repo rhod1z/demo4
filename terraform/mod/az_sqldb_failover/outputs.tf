@@ -1,0 +1,4 @@
+output "kv_sql_admin_password"       { value = data.azurerm_key_vault_secret.kv_sql_admin_password.value }
+
+output "connection_string_secondary" { value  = "Server=tcp:${azurerm_sql_server.secondary.name}.database.windows.net,1433;Initial Catalog=mhcdb;Persist Security Info=False;User ID=azuresql;Password=${data.azurerm_key_vault_secret.kv_sql_admin_password.value};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;" }
+output "connection_string_failover"  { value  = "Server=tcp:${var.failover_group_name}.database.windows.net,1433;Initial Catalog=mhcdb;Persist Security Info=False;User ID=azuresql;Password=${data.azurerm_key_vault_secret.kv_sql_admin_password.value};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;" }

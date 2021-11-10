@@ -1,0 +1,80 @@
+# Trigger CI on commits to any branch.
+trigger:
+  - '*'
+# Disable triggering CI on pull requests.
+pr: none
+
+variables:
+
+  # MUST EXIST IN ADO - Create 'Service Connection'.
+  azSubscription:     'payg2106'                             # The name of the service connection to azure.
+  # MUST EXIST IN ADO - Create 'Service Connection'.
+  acrName:            'acrdlnteudemoapps210713'              # The container registry name; docker > others > enter acr reg info, sp id & sp pswd.
+  # MUST EXIST IN ADO - Create 'Variable Group'.
+  variableGroupKV:    'kv-core-210713'                       # The name of the ado keyvault variable group.
+
+  acrRepo_Web:        'web'                                  # The container registry repo name.
+  tag:                '$(Build.SourceVersionMessage)'        # The image tag name; this is taken from the git commit message.
+  ${{ if eq(variables['Build.SourceBranchName'], 'dev') }}:  # Sets 'targetEnv' to 'dev' if branch equals dev.
+    targetEnv: dev
+  ${{ if eq(variables['Build.SourceBranchName'], 'stg') }}:  # Sets 'targetEnv' to 'stg' if branch equals stg.
+    targetEnv: stg
+  ${{ if eq(variables['Build.SourceBranchName'], 'prd') }}:  # Sets 'targetEnv' to 'prd' if branch equals prd.
+    targetEnv: prd
+
+stages:
+
+  # Terraform 'plan' the web app infrastructure.
+  - stage: 'terraformPlan'
+    displayName: 'Terraform - Plan'
+    # Load secrets from Key Vault.
+    variables:
+      - group: '${{ variables.variableGroupKV }}'
+    jobs:
+
+    # Initiate and plan terraform on prd; output artifact for review.
+    - job: 'terraformInitPrd'
+      displayName: 'Init & Plan (prd)'
+      condition: |
+        and
+        (
+        succeeded(),
+        or(eq(variables['Build.SourceBranchName'], 'prd'), eq(variables['Build.SourceBranchName'], 'stg'))
+        )
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+
+      # Install specific version of terraform.
+      - task: TerraformInstaller@0
+        displayName: Terraform Installer
+        inputs:
+          terraformVersion: '1.0.7'
+
+      # Run terraform init.
+      - bash: terraform init -backend-config="access_key=$KV_ARM_ACCESS_KEY"
+        displayName: Terraform Init
+        workingDirectory: 'terraform/env/prd'
+        env:
+          KV_ARM_ACCESS_KEY: $(KV-ARM-ACCESS-KEY)
+
+      # Run terraform plan.
+      - bash: terraform plan -out tfplan && terraform show tfplan > tfplan.txt
+        displayName: Terraform Plan
+        workingDirectory: 'terraform/env/prd'
+        env:
+          ARM_CLIENT_SECRET: $(KV-ARM-CLIENT-SECRET)
+
+      # Publish tfplan.txt as an artifact to be reviewed before manual validation.
+      - task: PublishPipelineArtifact@1
+        displayName: Terraform Plan Report
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)/terraform/env/prd/tfplan.txt'
+          artifactName: 'tfplan.txt'
+
+      # Publish tfplan to be used by 'terraform apply -input=false tfplan'.
+      - task: PublishPipelineArtifact@1
+        displayName: Terraform Report Output
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)/terraform/env/prd/tfplan'
+          artifactName: 'tfplan'
