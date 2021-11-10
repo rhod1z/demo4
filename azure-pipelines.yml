@@ -48,4 +48,4 @@ stages:
       # Initiate and plan terraform on prd; output artifact for review.
       - template: templates/terraform-plan.yml
         parameters:
-          rhodri: 'prd'
+          env: 'prd'
