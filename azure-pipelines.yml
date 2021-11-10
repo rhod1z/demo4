@@ -45,5 +45,7 @@ stages:
         vmImage: 'ubuntu-latest'
       steps:
 
-      # Build the project from template - 'Debug' build.
+      # Initiate and plan terraform on prd; output artifact for review.
       - template: templates/terraform-plan.yml
+        parameters:
+          buildConfiguration: 'prd'

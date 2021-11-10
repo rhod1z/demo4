@@ -9,7 +9,7 @@ steps:
 # Run terraform init.
 - bash: terraform init -backend-config="access_key=$KV_ARM_ACCESS_KEY"
   displayName: Terraform Init
-  workingDirectory: 'terraform/env/prd'
+  workingDirectory: 'terraform/env/${{ parameters.targetEnv }}'
   env:
     KV_ARM_ACCESS_KEY: $(KV-ARM-ACCESS-KEY)
 
