@@ -1,0 +1,33 @@
+# Local .terraform files & directories.
+**/.terraform/*
+*.terraform*
+tfplan*
+
+# .tfstate files.
+*.tfstate
+*.tfstate.*
+
+# Secrets.
+**/secrets/*
+
+# Custom files.
+_build*.sh
+*.bak
+
+################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/obj
+/src/MyHealth.API/obj
+/src/MyHealth.API/bin/Debug/netstandard1.6
+/src/MyHealth.Web/bin/Debug/netcoreapp1.0
+/src/MyHealth.Web/obj
+/src/MyHealth.Model/bin/Debug/netstandard1.6
+/src/MyHealth.Model/obj
+/src/MyHealth.Data/bin/Debug/netstandard1.6
+/src/MyHealth.Data/obj
+/src/MyHealth.Helpers/obj
+/test/MyHealth.API.IntegrationTests/obj
+/test/MyHealth.API.IntegrationTests/bin/Debug/netcoreapp1.0

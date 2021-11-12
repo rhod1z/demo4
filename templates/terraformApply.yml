@@ -1,0 +1,53 @@
+# Terraform apply template.
+
+steps:
+
+# Install specific version of terraform.
+- task: TerraformInstaller@0
+  displayName: Terraform Installer
+  inputs:
+    terraformVersion: '1.0.7'
+
+# Download tfplan artifact.
+- task: DownloadPipelineArtifact@2
+  displayName: Download tfplan
+  inputs:
+    artifact: 'tfplan'
+    path: '$(Build.SourcesDirectory)/terraform/env/${{ parameters.env }}'
+
+# Run terraform init.
+- bash: |
+    terraform init \
+      -backend-config="access_key=$KV_ARM_ACCESS_KEY"
+  displayName: Terraform Init
+  workingDirectory: 'terraform/env/${{ parameters.env }}'
+  env:
+    KV_ARM_ACCESS_KEY: $(KV-ARM-ACCESS-KEY)
+
+# Run terraform apply.
+- bash: terraform apply -input=false tfplan
+  displayName: Terraform Apply
+  workingDirectory: 'terraform/env/${{ parameters.env }}'
+  env:
+    ARM_CLIENT_SECRET: $(KV-ARM-CLIENT-SECRET)
+
+# Collect terraform outputs to use in pipeline stages.
+- task: TerraformTaskV2@2
+  displayName: Terraform Outputs - Collect
+  name: terraformOutputs
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: 'terraform/env/${{ parameters.env }}'
+    environmentServiceNameAzureRM: $(azSubscription)
+
+# Store terraform outputs as pipeline variables.
+- bash: |
+    CONNECTION_STRING=$(cat $(terraformOutputs.jsonOutputVariablesPath) | jq '.connection_string_failover.value' -r)
+    WEBAPP_NAME=$(cat $(terraformOutputs.jsonOutputVariablesPath) | jq '.webapp_name.value' -r)
+    RESOURCE_GROUP_NAME=$(cat $(terraformOutputs.jsonOutputVariablesPath) | jq '.resource_group_name.value' -r)
+    echo "##vso[task.setvariable variable=MyCONNECTIONSTRING;isOutput=true]$CONNECTION_STRING"
+    echo "##vso[task.setvariable variable=MyWEBAPPNAME;isOutput=true]$WEBAPP_NAME"
+    echo "##vso[task.setvariable variable=MyRESOURCEGROUPNAME;isOutput=true]$RESOURCE_GROUP_NAME"
+  displayName: Terraform Outputs - Set
+  name: setNewVars

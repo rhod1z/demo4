@@ -1,0 +1,219 @@
+# Using templates reduced from 516 to 219 lines of code.
+# Trigger CI on commits to any branch.
+trigger:
+  - '*'
+# Disable triggering CI on pull requests.
+pr: none
+
+variables:
+
+  # MUST EXIST IN ADO - Create 'Service Connection'.
+  azSubscription:     'payg2106'                             # The name of the service connection to azure.
+  # MUST EXIST IN ADO - Create 'Service Connection'.
+  acrName:            'acrdlnteudemoapps210713'              # The container registry name; docker > others > enter acr reg info, sp id & sp pswd.
+  # MUST EXIST IN ADO - Create 'Variable Group'.
+  variableGroupKV:    'kv-core-210713'                       # The name of the ado keyvault variable group.
+
+  acrRepo_Web:        'web'                                  # The container registry repo name.
+  tag:                '$(Build.SourceVersionMessage)'        # The image tag name; this is taken from the git commit message.
+  ${{ if eq(variables['Build.SourceBranchName'], 'dev') }}:  # Sets 'targetEnv' to 'dev' if branch equals dev.
+    targetEnv: dev
+  ${{ if eq(variables['Build.SourceBranchName'], 'stg') }}:  # Sets 'targetEnv' to 'stg' if branch equals stg.
+    targetEnv: stg
+  ${{ if eq(variables['Build.SourceBranchName'], 'prd') }}:  # Sets 'targetEnv' to 'prd' if branch equals prd.
+    targetEnv: prd
+
+stages:
+
+  # Terraform 'plan' the web app infrastructure.
+  - stage: 'terraformPlan'
+    displayName: 'Terraform - Plan'
+    # Load secrets from Key Vault.
+    variables:
+      - group: '${{ variables.variableGroupKV }}'
+    jobs:
+
+    # Initiate and plan terraform on prd; output artifact for review.
+    - job: 'terraformInitPrd'
+      displayName: 'Init & Plan (prd)'
+      condition: and(succeeded(), or(eq(variables['Build.SourceBranchName'], 'prd'), eq(variables['Build.SourceBranchName'], 'stg')))
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - template: templates/terraformPlan.yml
+        parameters:
+          env: 'prd'
+
+    # Initiate and plan terraform on dev; output artifact for review.
+    - job: 'terraformInitDev'
+      displayName: 'Init & Plan (dev)'
+      # Only deploy if the previous stage completed, and the branch is not 'stg' or 'prd'.
+      condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'stg'), ne(variables['Build.SourceBranchName'], 'prd'))
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - template: templates/terraformPlan.yml
+        parameters:
+          env: 'dev'
+
+  # Manual step to approve the terraform plan.
+  - stage: 'waitForValidationTerraform'
+    displayName: 'Wait for Validation'
+    dependsOn:
+    - terraformPlan
+    jobs:
+
+    # Manual step to approve the terraform plan.
+    - job: 'waitForValidationTerraform'
+      displayName: 'Wait for Validation'
+      pool: server
+      timeoutInMinutes: 4320 # Job times out in 3 days.
+      steps:
+      # Initiate and plan terraform on prd; output artifact for review.
+      - template: templates/terraformWait.yml
+
+  # Terraform 'apply' the azure infrasturcture.
+  - stage: 'terraformApply'
+    displayName: 'Terraform - Apply'
+    dependsOn:
+    - waitForValidationTerraform
+    # Load secrets from Key Vault.
+    variables:
+      - group: '${{ variables.variableGroupKV }}'
+    jobs:
+
+    # Apply terraform on prd (and stg; stg is just a slot on prd, but this need to run to get webapp_name for deployment slot).
+    - job: 'terraformApplyPrd'
+      displayName: 'Apply (prd)'
+      condition: and(succeeded(),or(eq(variables['Build.SourceBranchName'], 'prd'), eq(variables['Build.SourceBranchName'], 'stg')))
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - template: templates/terraformApply.yml
+        parameters:
+          env: 'prd'
+
+    # Apply terraform on dev.
+    - job: 'terraformApplyDev'
+      displayName: 'Apply (dev)'
+      condition: and(succeeded(),ne(variables['Build.SourceBranchName'], 'stg'),ne(variables['Build.SourceBranchName'], 'prd'))
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - template: templates/terraformApply.yml
+        parameters:
+          env: 'dev'
+
+  # Compile the web app.
+  - stage: 'codeCompile'
+    displayName: 'Code - Compile & Push to ACR'
+    dependsOn:
+    - terraformApply
+    jobs:
+
+    # Docker build the prd image and push to ACR.
+    - job: 'buildPrd'
+      displayName: 'Compile & Push to ACR (prd)'
+      variables:
+        - name: varsMyCONNECTIONSTRING                    # Reference as $(varsMyCONNECTIONSTRING)
+          value: $[ stageDependencies.terraformApply.terraformApplyPrd.outputs['setNewVars.MyCONNECTIONSTRING'] ]
+      condition: and(succeeded(),eq(variables['Build.SourceBranchName'], 'prd'))
+      pool:
+        vmImage: 'ubuntu-18.04'
+      steps:
+      - template: templates/dockerBuild.yml
+        parameters:
+          env: 'prd'
+
+    # Docker build the dev image and push to ACR.
+    - job: 'buildDev'
+      displayName: 'Compile & Push to ACR (dev)'
+      variables:
+        - name: varsMyCONNECTIONSTRING                    # Reference as $(varsMyCONNECTIONSTRING)
+          value: $[ stageDependencies.terraformApply.terraformApplyDev.outputs['setNewVars.MyCONNECTIONSTRING'] ]
+      condition: and(succeeded(),eq(variables['Build.SourceBranchName'], 'dev'))
+      pool:
+        vmImage: 'ubuntu-18.04'
+      steps:
+      - template: templates/dockerBuild.yml
+
+    # Docker build the stg image and push to ACR.
+    - job: 'buildStg'
+      displayName: 'Compile & Push to ACR (stg)'
+      variables:
+        - name: varsMyCONNECTIONSTRING                    # Reference as $(varsMyCONNECTIONSTRING)
+          value: $[ stageDependencies.terraformApply.terraformApplyPrd.outputs['setNewVars.MyCONNECTIONSTRING'] ]
+      condition: and(succeeded(),eq(variables['Build.SourceBranchName'], 'stg'))
+      pool:
+        vmImage: 'ubuntu-18.04'
+      steps:
+      - template: templates/dockerBuild.yml
+
+  # Deploy web app to azure app service.
+  - stage: 'codeDeploy'
+    displayName: 'Code - Deploy'
+    dependsOn:
+    - terraformApply
+    - codeCompile
+    jobs:
+
+    # Deploy web app to azure app service on prd.
+    - deployment: deployToAzurePrd
+      displayName: 'Deploy to Azure (prd)'
+      variables:
+        - name: varsMyWEBAPPNAME                    # Reference as $(varsMyWEBAPPNAME)
+          value: $[ stageDependencies.terraformApply.terraformApplyPrd.outputs['setNewVars.MyWEBAPPNAME'] ]
+        - name: varsMyRESOURCEGROUPNAME             # Reference as $(varsMyRESOURCEGROUPNAME)
+          value: $[ stageDependencies.terraformApply.terraformApplyPrd.outputs['setNewVars.MyRESOURCEGROUPNAME'] ]
+      condition: and(succeeded(),eq(variables['Build.SourceBranchName'], 'prd'))
+      pool:
+        vmImage: 'ubuntu-latest'
+      # Automatically creates an environment in azure devops > project > pipelines > environments.
+      environment: 'prd'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - template: templates/dockerDeploy.yml
+              parameters:
+                env: 'prd'
+
+    # Deploy web app to azure app service on dev.
+    - deployment: deployToAzureDev
+      displayName: 'Deploy to Azure (dev)'
+      variables:
+        - name: varsMyWEBAPPNAME                    # Reference as $(varsMyWEBAPPNAME)
+          value: $[ stageDependencies.terraformApply.terraformApplyDev.outputs['setNewVars.MyWEBAPPNAME'] ]
+      condition: and(succeeded(),eq(variables['Build.SourceBranchName'], 'dev'))
+      pool:
+        vmImage: 'ubuntu-latest'
+      # Automatically creates an environment in azure devops > project > pipelines > environments.
+      environment: 'dev'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - template: templates/dockerDeploy.yml
+              parameters:
+                env: 'dev'
+
+    # Deploy web app to azure app service on stg.
+    - deployment: deployToAzureStg
+      displayName: 'Deploy to Azure (stg)'
+      variables:
+        - name: varsMyWEBAPPNAME                    # Reference as $(varsMyWEBAPPNAME)
+          value: $[ stageDependencies.terraformApply.terraformApplyPrd.outputs['setNewVars.MyWEBAPPNAME'] ]
+        - name: varsMyRESOURCEGROUPNAME             # Reference as $(varsMyRESOURCEGROUPNAME)
+          value: $[ stageDependencies.terraformApply.terraformApplyPrd.outputs['setNewVars.MyRESOURCEGROUPNAME'] ]
+      condition: and(succeeded(),eq(variables['Build.SourceBranchName'], 'stg'))
+      pool:
+        vmImage: 'ubuntu-latest'
+      # Automatically creates an environment in azure devops > project > pipelines > environments.
+      environment: 'stg'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - template: templates/dockerDeploy.yml
+              parameters:
+                env: 'stg'

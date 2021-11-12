@@ -1,0 +1,26 @@
+# Deploy docker image to Azure App Service template.
+
+steps:
+
+# Swap prd out to stg for easy rollback - only if branch name is prd.
+- task: AzureAppServiceManage@0
+  condition: eq(variables['Build.SourceBranchName'], 'prd')
+  displayName: 'Backup prd to stg slot'
+  inputs:
+    azureSubscription: $(azSubscription)
+    Action:            'Swap Slots'
+    WebAppName:        $(varsMyWEBAPPNAME)
+    ResourceGroupName: $(varsMyRESOURCEGROUPNAME)
+    SourceSlot:        'stg'
+
+# Deploy new branch.
+- task: AzureRmWebAppDeployment@4
+  displayName: 'Deploy to Azure (${{ parameters.env }})'
+  inputs:
+    ConnectionType:    'AzureRM'
+    azureSubscription: $(azSubscription)
+    appType:           'webAppContainer'
+    WebAppName:        $(varsMyWEBAPPNAME)
+    DockerNamespace:   '$(acrName).azurecr.io'
+    DockerRepository:  $(acrRepo_Web)
+    DockerImageTag:    $(tag)-$(targetEnv)

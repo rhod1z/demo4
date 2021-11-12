@@ -1,0 +1,27 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "app_service_name": {"type": "string"},
+        "name_of_slot": {"type": "string"},
+        "hostname": {"type": "string"},
+        "location": {"type": "string"},
+        "thumbprint": {"type": "string"}
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Web/sites/slots/hostNameBindings",
+            "name": "[concat(parameters('app_service_name'), '/', parameters('name_of_slot'), '/', parameters('hostname'))]",
+            "apiVersion": "2016-08-01",
+            "location": "[parameters('location')]",
+            "scale": null,
+            "properties": {
+                "siteName": "[concat(parameters('app_service_name'),'(', parameters('name_of_slot'),')')]",
+                "domainId": null,
+                "hostNameType": "Verified",
+                "sslState": "SniEnabled",
+                "thumbprint": "[parameters('thumbprint')]"
+            }
+        }
+    ]
+  }
