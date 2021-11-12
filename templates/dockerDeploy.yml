@@ -28,7 +28,8 @@ steps:
 
 # If branch is 'stg', deploy the web app to the staging slot.
 - task: AzureRmWebAppDeployment@4
-  displayName: 'Deploy to Azure (${{ parameters.env }})'
+  condition: eq(variables['Build.SourceBranchName'], 'stg')
+  displayName: 'Deploy to Azure (stg)'
   inputs:
     ConnectionType:    'AzureRM'
     azureSubscription: $(azSubscription)
